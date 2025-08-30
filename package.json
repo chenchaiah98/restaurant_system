@@ -1,0 +1,17 @@
+{
+  "name": "temple-restaurant-app",
+  "version": "0.1.0",
+  "description": "Minimal restaurant REST API + static UI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.6"
+  }
+}

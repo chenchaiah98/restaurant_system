@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Reports</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+    <div class="container py-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h1 class="h3">Reports</h1>
+            <a class="btn btn-outline-secondary" href="/kitchen">Back to Kitchen</a>
+        </div>
+
+        <div class="mb-3">
+            <label>Period</label>
+            <select id="period" class="form-select w-auto d-inline-block">
+                <option value="day">Daily</option>
+                <option value="week">Weekly</option>
+                <option value="month">Monthly</option>
+            </select>
+            <label class="ms-2">Range</label>
+            <input id="range" type="number" class="form-control d-inline-block ms-2" style="width:100px" value="7">
+            <button id="load" class="btn btn-primary ms-2">Load</button>
+        </div>
+
+        <div id="results"></div>
+        <div class="container py-2">
+            <div class="d-flex gap-2 mb-3">
+                <button id="exportCsv" class="btn btn-outline-secondary">Export CSV</button>
+                <button id="showCsv" class="btn btn-outline-secondary">Show CSV text</button>
+            </div>
+            <div class="row">
+                <div class="col-md-6"><canvas id="ordersChart"></canvas></div>
+                <div class="col-md-6"><canvas id="revenueChart"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        async function loadReports() {
+            const period = document.getElementById('period').value;
+            const range = Number(document.getElementById('range').value) || 0;
+            const res = await fetch(`/api/reports?period=${period}&range=${range}`);
+            const j = await res.json();
+            const container = document.getElementById('results');
+            if (j.error) { container.innerHTML = '<div class="alert alert-danger">' + j.error + '</div>'; return; }
+            container.innerHTML = `<h5>Period: ${j.period}</h5>` + `
+                    <table class="table table-sm">
+                        <thead><tr><th>Period</th><th>Orders</th><th>Items</th><th>Revenue</th></tr></thead>
+                        <tbody>${j.data.map(r => `<tr><td>${r.period}</td><td>${r.orders}</td><td>${r.items}</td><td>₹${r.revenue.toFixed(2)}</td></tr>`).join('')}</tbody>
+                    </table>`;
+
+            // prepare chart data
+            const labels = j.data.map(x => x.period);
+            const ordersData = j.data.map(x => x.orders);
+            const revenueData = j.data.map(x => x.revenue);
+            renderCharts(labels, ordersData, revenueData);
+            window._lastReport = j; // cache for export
+        }
+        document.getElementById('load').addEventListener('click', loadReports);
+        loadReports();
+
+        let ordersChart = null, revenueChart = null;
+        function renderCharts(labels, ordersData, revenueData) {
+            const octx = document.getElementById('ordersChart').getContext('2d');
+            const rctx = document.getElementById('revenueChart').getContext('2d');
+            if (ordersChart) ordersChart.destroy();
+            if (revenueChart) revenueChart.destroy();
+            ordersChart = new Chart(octx, { type: 'line', data: { labels, datasets: [{ label: 'Orders', data: ordersData, borderColor: 'rgb(54,162,235)', backgroundColor: 'rgba(54,162,235,0.2)' }] }, options: { responsive: true } });
+            revenueChart = new Chart(rctx, { type: 'line', data: { labels, datasets: [{ label: 'Revenue', data: revenueData, borderColor: 'rgb(75,192,192)', backgroundColor: 'rgba(75,192,192,0.2)' }] }, options: { responsive: true } });
+        }
+
+        function toCsv(report) {
+            if (!report || !report.data) return '';
+            const rows = [['period', 'orders', 'items', 'revenue']].concat(report.data.map(r => [r.period, r.orders, r.items, r.revenue]));
+            return rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+        }
+
+        document.getElementById('exportCsv').addEventListener('click', function () {
+            const csv = toCsv(window._lastReport || { data: [] });
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `report_${Date.now()}.csv`;
+            document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+        });
+
+        document.getElementById('showCsv').addEventListener('click', function () {
+            const csv = toCsv(window._lastReport || { data: [] });
+            const w = window.open('', '_blank');
+            w.document.write('<pre>' + csv.replace(/</g, '&lt;') + '</pre>');
+            w.document.title = 'Report CSV';
+        });
+    </script>
+</body>
+
+</html>

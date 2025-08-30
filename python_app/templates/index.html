@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Menu</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/css/style.css" rel="stylesheet">
+    <style>
+        /* small helper to make category active visible */
+        .sidebar .nav-link.active {
+            background: rgba(255, 255, 255, 0.08);
+            font-weight: 700;
+        }
+    </style>
+</head>
+
+<body class="bg-light">
+    <div class="container py-4">
+        <div class="d-flex">
+            <!-- Sidebar -->
+            <nav id="appSidebar" class="sidebar bg-primary text-white d-flex flex-column p-3 me-3">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div class="h5 mb-0 text-white">MENU</div>
+                    <button id="menuToggle" class="btn btn-sm btn-light">☰</button>
+                </div>
+                <div class="mb-2 small text-white-50">Categories</div>
+                <ul id="categoryList" class="nav flex-column sidebar-nav mb-3"></ul>
+                <div class="mt-auto small text-white-50">© Temple</div>
+            </nav>
+
+            <!-- Main content -->
+            <main class="flex-fill">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h1 class="h3">Temple Menu</h1>
+                </div>
+
+                <div class="row">
+                    <div class="col-lg-8">
+                        <div id="itemsView">
+                            <div class="list-group" id="menuList"></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="card">
+                            <div class="card-body">
+                                <h5 class="card-title">Order</h5>
+                                <div class="mb-2">
+                                    <label class="form-label">Table / Name</label>
+                                    <input id="table" class="form-control" placeholder="Table number or name">
+                                </div>
+                                <ul id="cart" class="list-group mb-3"></ul>
+                                <div class="d-grid">
+                                    <button id="reviewOrder" class="btn btn-primary">Review Order</button>
+                                    <button id="placeOrder" class="btn btn-success d-none">Place Order</button>
+                                </div>
+                                <div id="msg" class="mt-2"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script id="__menu_data" type="application/json">{{ menu | tojson }}</script>
+    <script>
+        try { window.__MENU__ = JSON.parse(document.getElementById('__menu_data').textContent || '[]'); } catch (e) { window.__MENU__ = []; }
+
+        function renderCategory(cat, items) {
+            const list = document.getElementById('menuList');
+            if (!list) return;
+            if (!items || !items.length) {
+                list.innerHTML = '<div class="list-group-item">No items in this category</div>';
+                return;
+            }
+            list.innerHTML = items.map(m => {
+                const disabled = m.available ? '' : 'disabled';
+                const badge = m.available ? '' : '<div class="badge bg-danger mt-1">Out of stock</div>';
+                const desc = m.description ? `<div class="small text-muted">${m.description}</div>` : '';
+                const catline = m.category ? `<div class="small text-info">${m.category}</div>` : '';
+                return `
+                    <label class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-bold">${m.name}</div>
+                            ${catline}
+                            ${desc}
+                            <div class="small text-muted mt-1">₹${Number(m.price).toFixed(2)} • max ${m.max_qty}</div>
+                        </div>
+                        <div class="text-end">
+                            <button class="btn btn-sm btn-primary mt-2 add-btn ${disabled}" data-id="${m.id}" data-name="${m.name}" data-price="${m.price}">Add</button>
+                        </div>
+                    </label>`;
+            }).join('');
+        }
+
+        async function pollMenu() {
+            try {
+                const res = await fetch('/api/menu');
+                const data = await res.json();
+                const prev = JSON.stringify(window.__MENU__ || []);
+                const now = JSON.stringify(data || []);
+                if (prev !== now) {
+                    window.__MENU__ = data;
+
+                    // bucket by category
+                    const byCat = {};
+                    const categories = [];
+                    for (const item of data) {
+                        const c = item.category || 'General';
+                        if (!byCat[c]) { byCat[c] = []; categories.push(c); }
+                        byCat[c].push(item);
+                    }
+
+                    const catList = document.getElementById('categoryList');
+                    if (catList) {
+                        catList.innerHTML = categories.map(c => '<li class="nav-item"><a href="#" class="nav-link text-white category-link" data-cat="' + c + '">' + c + '</a></li>').join('');
+                        catList.querySelectorAll('.category-link').forEach(a => a.addEventListener('click', function (ev) {
+                            ev.preventDefault();
+                            const cat = this.dataset.cat;
+                            renderCategory(cat, byCat[cat] || []);
+                            catList.querySelectorAll('.nav-link').forEach(n => n.classList.remove('active'));
+                            this.classList.add('active');
+                        }));
+                    }
+
+                    // default show first category
+                    if (categories.length) {
+                        renderCategory(categories[0], byCat[categories[0]]);
+                        const firstLink = document.querySelector('#categoryList .category-link');
+                        if (firstLink) firstLink.classList.add('active');
+                    }
+                }
+            } catch (e) {
+                console.error('pollMenu error', e);
+            }
+        }
+
+        setInterval(pollMenu, 4000);
+        pollMenu();
+
+        window.addEventListener('storage', function (e) { if (e.key === 'menu_updated') pollMenu(); });
+    </script>
+    <script>
+        // Sidebar toggle for mobile: show/hide the sidebar when the menu button is clicked
+        (function () {
+            const toggle = document.getElementById('menuToggle');
+            const sidebar = document.getElementById('appSidebar');
+            if (!toggle || !sidebar) return;
+
+            toggle.addEventListener('click', function (ev) {
+                ev.preventDefault();
+                sidebar.classList.toggle('mobile-show');
+            });
+
+            // clicking outside the sidebar on mobile will hide it
+            document.addEventListener('click', function (ev) {
+                if (!sidebar.classList.contains('mobile-show')) return;
+                const isInside = sidebar.contains(ev.target) || toggle.contains(ev.target);
+                if (!isInside) sidebar.classList.remove('mobile-show');
+            }, true);
+        })();
+    </script>
+    <script src="/static/js/main.js"></script>
+</body>
+
+</html>

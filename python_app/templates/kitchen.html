@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Kitchen - Orders</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/css/style.css" rel="stylesheet">
+</head>
+
+<body class="bg-dark text-light">
+    <div class="container py-3">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h1 class="h4">Kitchen Orders</h1>
+            <div class="btn-group">
+                <a class="btn btn-outline-light" href="/">Menu</a>
+                <a class="btn btn-outline-light" href="/summary">Summary</a>
+                <a class="btn btn-outline-light" href="/reports">Reports</a>
+                <button id="refreshBtn" class="btn btn-outline-light">Refresh</button>
+            </div>
+        </div>
+
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <div class="d-flex align-items-center mb-2">
+                    <h5 class="text-light me-3 mb-0">Menu Availability</h5>
+                    <div class="ms-auto" style="width:220px;">
+                        <select id="sortMenu" class="form-select form-select-sm">
+                            <option value="id">Sort: Default</option>
+                            <option value="category">Sort: Category</option>
+                            <option value="name">Sort: Name</option>
+                            <option value="price">Sort: Price</option>
+                            <option value="available">Sort: Availability</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="menuList" class="list-group mb-3"></div>
+                <div class="card bg-secondary text-drak p-2">
+                    <h6>Add / Edit Item</h6>
+                    <div class="mb-2">
+                        <input id="newName" class="form-control mb-1" placeholder="Name">
+                        <input id="newDesc" class="form-control mb-1" placeholder="Description">
+                        <div class="d-flex gap-2">
+                            <input id="newPrice" type="number" step="0.01" class="form-control" placeholder="Price">
+                            <input id="newMax" type="number" class="form-control" placeholder="Max qty" value="10">
+                        </div>
+                        <div class="mt-2">
+                            <label class="form-label small">Category</label>
+                            <select id="newCategory" class="form-select form-select-sm">
+                                <option>General</option>
+                                <option>Breakfast</option>
+                                <option>Lunch</option>
+                                <option>Dinner</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button id="addItem" class="btn btn-sm btn-success">Add Item</button>
+                        <button id="saveEdit" class="btn btn-sm btn-primary" disabled>Save Edit</button>
+                        <button id="cancelEdit" class="btn btn-sm btn-light" disabled>Cancel</button>
+                    </div>
+                    <input type="hidden" id="editingId">
+                </div>
+            </div>
+            <div class="col-md-6">
+                <h5 class="text-light">Orders</h5>
+                <div id="orders"></div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        async function loadOrders() {
+            try {
+                const res = await fetch('/api/orders');
+                const data = await res.json();
+                const container = document.getElementById('orders');
+                if (!data.length) container.innerHTML = '<div class="alert alert-secondary">No orders</div>';
+                else {
+                    container.innerHTML = data.map(o => {
+                        const items = o.items.map(it => `<li>${it.name} x${it.qty || 1}</li>`).join('');
+                        const cardClass = o.status === 'pending' ? 'border-warning' : (o.status === 'rejected' ? 'border-danger bg-secondary text-light' : '');
+                        return `<div class="card mb-2 ${cardClass}"><div class="card-body text-dark"><div class="d-flex justify-content-between"><div><strong>Order #${o.id}</strong> <small class="text-muted">${o.created_at}</small><div>Table: ${o.table_number || '-'}</div></div><div><button class="btn btn-sm btn-success" onclick="updateOrder(${o.id},'served')">Mark Served</button> <button class="btn btn-sm btn-danger" onclick="updateOrder(${o.id},'cancelled')">Cancel</button> <button class="btn btn-sm btn-warning" onclick="updateOrder(${o.id},'rejected')">Reject</button></div></div><ul class="mt-2">${items}</ul></div></div>`;
+                    }).join('');
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function updateOrder(id, status) {
+            await fetch('/api/orders/' + id + '/status', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+            loadOrders();
+        }
+
+        async function loadMenu() {
+            try {
+                const res = await fetch('/api/menu');
+                const data = await res.json();
+                const menuList = document.getElementById('menuList');
+                if (!data.length) menuList.innerHTML = '<div class="text-muted">No menu items</div>';
+                else {
+                    // apply client-side sort based on selector
+                    const sortEl = document.getElementById('sortMenu');
+                    const sortBy = sortEl ? sortEl.value : 'id';
+                    data.sort((a, b) => {
+                        if (sortBy === 'name') return ('' + a.name).localeCompare(b.name);
+                        if (sortBy === 'category') return ('' + (a.category || '')).localeCompare(b.category || '');
+                        if (sortBy === 'price') return Number(a.price) - Number(b.price);
+                        if (sortBy === 'available') return (b.available ? 1 : 0) - (a.available ? 1 : 0);
+                        return (a.id || 0) - (b.id || 0);
+                    });
+
+                    menuList.innerHTML = data.map(m => {
+                        const checked = m.available ? 'checked' : '';
+                        const desc = m.description ? `<div class="small text-muted">${m.description}</div>` : '';
+                        const cat = m.category ? `<div class="small text-info">${m.category}</div>` : '';
+                        return `
+                                                    <label class="list-group-item d-flex justify-content-between align-items-center">
+                                                        <div>
+                                                            <div class="fw-bold">${m.name}</div>
+                                ${cat}
+                                ${desc}
+                                                            <div class="small text-muted mt-1">₹${Number(m.price).toFixed(2)} • max ${m.max_qty}</div>
+                                                        </div>
+                                                        <div class="text-end">
+                                                                <input type="checkbox" class="form-check-input avail-toggle" data-id="${m.id}" data-name="${m.name}" ${checked}>
+                                                                <div class="btn-group ms-2 mt-2">
+                                                                    <button class="btn btn-light btn-sm dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">Actions</button>
+                                                                    <ul class="dropdown-menu dropdown-menu-end">
+                                                                        <li><a class="dropdown-item edit-item" href="#" data-id="${m.id}" data-name="${m.name}" data-price="${m.price}" data-max="${m.max_qty}" data-desc="${(m.description || '').replace(/"/g, '&quot;')}" data-category="${m.category || 'General'}">Edit</a></li>
+                                                                        <li><a class="dropdown-item toggle-availability" href="#" data-id="${m.id}" data-available="${m.available}">${m.available ? 'Mark Unavailable' : 'Mark Available'}</a></li>
+                                                                    </ul>
+                                                                </div>
+                                                        </div>
+                                                    </label>`;
+                    }).join('');
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        document.addEventListener('change', async function (e) {
+            if (e.target.matches('.avail-toggle')) {
+                const id = e.target.dataset.id;
+                const available = e.target.checked;
+                try {
+                    const resp = await fetch('/api/menu/' + id + '/availability', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ available }) });
+                    if (resp.ok) {
+                        // notify other tabs/pages that menu changed
+                        try { localStorage.setItem('menu_updated', Date.now().toString()); } catch (err) { }
+                    } else {
+                        const errBody = await resp.json().catch(() => ({}));
+                        alert('Failed to update availability: ' + (errBody.error || resp.statusText));
+                    }
+                } catch (err) { console.error(err); }
+                // notify orders view to refresh menu markers if needed
+            }
+            if (e.target && e.target.id === 'sortMenu') {
+                loadMenu();
+            }
+        });
+
+        // Add item
+        document.getElementById('addItem').addEventListener('click', async function () {
+            const name = document.getElementById('newName').value.trim();
+            const desc = document.getElementById('newDesc').value.trim();
+            const price = Number(document.getElementById('newPrice').value);
+            const max = Number(document.getElementById('newMax').value) || 10;
+            const category = document.getElementById('newCategory').value || 'General';
+            if (!name || !price) return alert('Name and price required');
+            try {
+                const resp = await fetch('/api/menu', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, description: desc, price, max_qty: max, available: true, category }) });
+                const body = await resp.json().catch(() => ({}));
+                if (resp.status === 201) {
+                    document.getElementById('newName').value = '';
+                    document.getElementById('newDesc').value = '';
+                    document.getElementById('newPrice').value = '';
+                    document.getElementById('newMax').value = '10';
+                    document.getElementById('newCategory').value = 'General';
+                    loadMenu();
+                    try { localStorage.setItem('menu_updated', Date.now().toString()); } catch (err) { }
+                } else {
+                    alert('Failed to add item: ' + (body.error || resp.statusText));
+                }
+            } catch (err) { console.error(err); alert('Failed to add'); }
+        });
+
+        // Edit item flow
+        document.addEventListener('click', function (e) {
+            if (e.target.matches('.edit-item')) {
+                const id = e.target.dataset.id;
+                document.getElementById('editingId').value = id;
+                document.getElementById('newName').value = e.target.dataset.name || '';
+                document.getElementById('newDesc').value = '';
+                document.getElementById('newPrice').value = e.target.dataset.price || '';
+                document.getElementById('newMax').value = e.target.dataset.max || '10';
+                document.getElementById('newCategory').value = e.target.dataset.category || 'General';
+                document.getElementById('saveEdit').disabled = false;
+                document.getElementById('cancelEdit').disabled = false;
+            }
+            if (e.target.matches('.toggle-availability')) {
+                e.preventDefault();
+                const id = e.target.dataset.id;
+                const current = e.target.dataset.available === 'true' || e.target.dataset.available === '1' || e.target.dataset.available === 'True';
+                const want = !current;
+                fetch('/api/menu/' + id + '/availability', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ available: want }) })
+                    .then(r => r.json().catch(() => ({}))).then(b => { loadMenu(); try { localStorage.setItem('menu_updated', Date.now().toString()); } catch (e) { } });
+            }
+        });
+
+        document.getElementById('cancelEdit').addEventListener('click', function () {
+            document.getElementById('editingId').value = '';
+            document.getElementById('newName').value = '';
+            document.getElementById('newDesc').value = '';
+            document.getElementById('newPrice').value = '';
+            document.getElementById('newMax').value = '10';
+            document.getElementById('saveEdit').disabled = true;
+            document.getElementById('cancelEdit').disabled = true;
+        });
+
+        document.getElementById('saveEdit').addEventListener('click', async function () {
+            const id = document.getElementById('editingId').value;
+            if (!id) return;
+            const name = document.getElementById('newName').value.trim();
+            const desc = document.getElementById('newDesc').value.trim();
+            const price = Number(document.getElementById('newPrice').value);
+            const category = document.getElementById('newCategory').value || 'General';
+            const max = Number(document.getElementById('newMax').value) || 10;
+            try {
+                const resp = await fetch('/api/menu/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, description: desc, price, max_qty: max, category }) });
+                const body = await resp.json().catch(() => ({}));
+                if (resp.ok) {
+                    document.getElementById('cancelEdit').click();
+                    loadMenu();
+                    try { localStorage.setItem('menu_updated', Date.now().toString()); } catch (err) { }
+                } else {
+                    alert('Failed to save item: ' + (body.error || resp.statusText));
+                }
+            } catch (err) { console.error(err); alert('Failed to save'); }
+        });
+
+        loadMenu();
+        loadOrders();
+        setInterval(loadOrders, 3000);
+        setInterval(loadMenu, 5000);
+        document.getElementById('refreshBtn').addEventListener('click', async function () {
+            const btn = this;
+            const orig = btn.innerHTML;
+            try {
+                btn.disabled = true;
+                btn.innerHTML = 'Refreshing...';
+                // try to refresh both concurrently
+                await Promise.all([loadMenu(), loadOrders()]);
+            } catch (err) {
+                console.error('Refresh failed, reloading page', err);
+                // fallback to full reload
+                try { location.reload(); } catch (e) { }
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = orig;
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Order Summary</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+    <div class="container py-4">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h1 class="h3">Order Summary</h1>
+            <div>
+                <a class="btn btn-outline-secondary me-2" href="/">Back to Menu</a>
+                <a class="btn btn-outline-primary" href="/kitchen">Kitchen View</a>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <h5>Items</h5>
+                <ul id="summaryList" class="list-group mb-3"></ul>
+
+                <div class="mb-2">
+                    <label class="form-label">Table / Name</label>
+                    <input id="table" class="form-control" placeholder="Table number or name">
+                </div>
+
+                <div class="d-flex">
+                    <button id="confirmOrder" class="btn btn-success me-2">Confirm & Place Order</button>
+                    <button id="editOrder" class="btn btn-outline-secondary">Edit Order</button>
+                </div>
+
+                <div id="msg" class="mt-2"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function loadFromStorage() {
+            try { return JSON.parse(localStorage.getItem('cart') || '[]'); } catch { return []; }
+        }
+        function saveToStorage(cart) { localStorage.setItem('cart', JSON.stringify(cart)); }
+
+        const list = document.getElementById('summaryList');
+        let cart = loadFromStorage();
+        let menuMap = {};
+        // load menu to get max_qty rules
+        (async function () {
+            try {
+                const mres = await fetch('/api/menu');
+                const mdata = await mres.json();
+                menuMap = mdata.reduce((acc, it) => { acc[it.id] = it; return acc; }, {});
+            } catch (e) { console.error('failed to load menu', e); }
+        })();
+        function render() {
+            if (!cart.length) { list.innerHTML = '<li class="list-group-item">Cart empty</li>'; return; }
+            list.innerHTML = cart.map((c, i) => `<li class="list-group-item d-flex justify-content-between align-items-center">${c.name} <div>Qty <input type="number" min="1" value="${c.qty || 1}" data-i="${i}" class="form-control d-inline-block" style="width:80px"> <button class="btn btn-sm btn-danger ms-2" data-rem="${i}">Remove</button></div></li>`).join('');
+        }
+
+        list.addEventListener('click', (e) => {
+            if (e.target.dataset.rem) { cart.splice(Number(e.target.dataset.rem), 1); saveToStorage(cart); render(); }
+        });
+
+        list.addEventListener('change', (e) => {
+            const i = e.target.dataset.i; if (i === undefined) return;
+            const id = cart[i].id;
+            const maxQty = menuMap[id] ? (menuMap[id].max_qty || 10) : 10;
+            cart[i].qty = Math.max(1, Math.min(maxQty, Number(e.target.value)));
+            saveToStorage(cart); render();
+        });
+
+        document.getElementById('editOrder').addEventListener('click', () => location.href = '/');
+
+        document.getElementById('confirmOrder').addEventListener('click', async () => {
+            const table = document.getElementById('table').value.trim();
+            if (!cart.length) return alert('Cart empty');
+            // enforce max_qty again before confirming
+            const items = cart.map(c => {
+                const maxQty = menuMap[c.id] ? (menuMap[c.id].max_qty || 10) : 10;
+                return { id: c.id, name: c.name, qty: Math.max(1, Math.min(maxQty, c.qty || 1)) };
+            });
+            const res = await fetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ table, items }) });
+            if (res.status === 201) {
+                localStorage.removeItem('cart');
+                document.getElementById('msg').innerHTML = '<div class="alert alert-success">Order placed</div>';
+                setTimeout(() => location.href = '/', 1200);
+            } else {
+                const j = await res.json().catch(() => ({}));
+                let html = '<div class="alert alert-danger"><strong>Some Item In Cart unavailable:</strong></div>';
+                if (j.details && Array.isArray(j.details) && j.details.length) {
+                    html += '<div class="alert alert-warning"><ul>' + j.details.map(d => `<li>${d}</li>`).join('') + '</ul></div>';
+                }
+                document.getElementById('msg').innerHTML = html;
+            }
+        });
+
+        render();
+    </script>
+</body>
+
+</html>

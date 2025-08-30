@@ -1,0 +1,79 @@
+<!doctype html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>Temple Restaurant App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 2rem auto;
+        }
+
+        form {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-top: .5rem
+        }
+
+        input {
+            padding: .4rem;
+            width: 100%;
+            box-sizing: border-box
+        }
+
+        button {
+            margin-top: .5rem
+        }
+
+        ul {
+            padding-left: 1rem
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Temple Restaurant App</h1>
+
+    <form id="addForm">
+        <label>Name <input id="name" required /></label>
+        <label>Address <input id="address" /></label>
+        <button type="submit">Add restaurant</button>
+    </form>
+
+    <h2>Restaurants</h2>
+    <ul id="list"></ul>
+
+    <script>
+        const listEl = document.getElementById('list');
+        async function load() {
+            const res = await fetch('/api/restaurants');
+            const data = await res.json();
+            listEl.innerHTML = data.map(r => `<li><strong>${r.name}</strong> ${r.address ? '- ' + r.address : ''} <button data-id="${r.id}" class="del">Delete</button></li>`).join('');
+            document.querySelectorAll('.del').forEach(b => b.addEventListener('click', async e => {
+                const id = e.target.getAttribute('data-id');
+                await fetch('/api/restaurants/' + id, { method: 'DELETE' });
+                load();
+            }));
+        }
+
+        document.getElementById('addForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const name = document.getElementById('name').value.trim();
+            const address = document.getElementById('address').value.trim();
+            if (!name) return;
+            await fetch('/api/restaurants', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, address }) });
+            document.getElementById('name').value = '';
+            document.getElementById('address').value = '';
+            load();
+        });
+
+        load();
+    </script>
+</body>
+
+</html>
