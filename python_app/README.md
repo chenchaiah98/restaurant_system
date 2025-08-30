@@ -5,7 +5,7 @@ This is a minimal local implementation of the flow in your diagram: a static men
 Quick start (Windows PowerShell):
 
 ```powershell
-cd "c:\Users\CHENC\OneDrive\Desktop\hostel\temple_restaurant_app\python_app"
+cd "..\..\temple_restaurant_app\python_app"
 python -m venv .venv; .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 python app.py
